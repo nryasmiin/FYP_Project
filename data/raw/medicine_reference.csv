@@ -1,0 +1,7 @@
+medicine_id,medicine_name,category
+M001,Paracetamol,Painkiller
+M002,Amoxicillin,Antibiotic
+M003,Ibuprofen,Painkiller
+M004,Cetirizine,Antihistamine
+M005,Metformin,Diabetes
+M006,Omeprazole,Gastric
