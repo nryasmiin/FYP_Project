@@ -64,7 +64,8 @@ def inject_styles():
     """, unsafe_allow_html=True)
 
 
-def forecast_demand_30days(med_id, df, features, xgb_model, xgb_bias):
+@st.cache_data(ttl=3600, show_spinner=False)
+def forecast_demand_30days(med_id, df, features, _xgb_model, xgb_bias):
     med_df = df[df["medicine_id"] == med_id].sort_values("date")
     if med_df.empty:
         return 0
@@ -117,7 +118,7 @@ def forecast_demand_30days(med_id, df, features, xgb_model, xgb_bias):
             "is_monsoon_season":   is_monsoon_season,
         }
 
-        pred = float(xgb_model.predict(pd.DataFrame([row])[features])[0]) + xgb_bias
+        pred = float(_xgb_model.predict(pd.DataFrame([row])[features])[0]) + xgb_bias
         pred = max(0, pred)
         total += pred
         recent_sales.append(pred)
@@ -199,13 +200,22 @@ def show():
 
     inv = inventory.merge(medicine, on="medicine_id", how="left")
 
+    # Cache forecasts per medicine (not per batch) to avoid recalculating
+    # the same medicine's demand forecast multiple times when it has
+    # several inventory batches.
+    forecast_cache = {}
+
     rows_list = []
     for _, row in inv.iterrows():
-        med_id         = row["medicine_id"]
-        days           = int(row["days_until_expiry"])
-        quantity       = int(row["quantity"])
-        forecasted_dem = forecast_demand_30days(med_id, df, features, xgb, xgb_bias)
-        risk, reason   = classify_risk_3factor(days, quantity, forecasted_dem)
+        med_id = row["medicine_id"]
+        days     = int(row["days_until_expiry"])
+        quantity = int(row["quantity"])
+
+        if med_id not in forecast_cache:
+            forecast_cache[med_id] = forecast_demand_30days(med_id, df, features, xgb, xgb_bias)
+        forecasted_dem = forecast_cache[med_id]
+
+        risk, reason = classify_risk_3factor(days, quantity, forecasted_dem)
 
         rows_list.append({
             "medicine_id":       med_id,

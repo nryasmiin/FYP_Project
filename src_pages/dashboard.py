@@ -75,7 +75,8 @@ def classify_stock(qty):
         return "High"
 
 
-def forecast_demand_30days(med_id, df, features, xgb_model, xgb_bias):
+@st.cache_data(ttl=3600, show_spinner=False)
+def forecast_demand_30days(med_id, df, features, _xgb_model, xgb_bias):
     med_df = df[df["medicine_id"] == med_id].sort_values("date")
     if med_df.empty:
         return 0
@@ -128,7 +129,7 @@ def forecast_demand_30days(med_id, df, features, xgb_model, xgb_bias):
             "is_monsoon_season":   is_monsoon_season,
         }
 
-        pred = float(xgb_model.predict(pd.DataFrame([row])[features])[0]) + xgb_bias
+        pred = float(_xgb_model.predict(pd.DataFrame([row])[features])[0]) + xgb_bias
         pred = max(0, pred)
         total += pred
         recent_sales.append(pred)
@@ -178,13 +179,22 @@ def show():
     )
     stock_by_med["stock_status"] = stock_by_med["quantity"].apply(classify_stock)
 
+    # Cache forecasts per medicine (not per batch) to avoid recalculating
+    # the same medicine's demand forecast multiple times when it has
+    # several inventory batches.
+    forecast_cache = {}
+
     risk_rows = []
     for _, row in inv.iterrows():
         med_id   = row["medicine_id"]
         days     = int(row["days_until_expiry"])
         quantity = int(row["quantity"])
-        forecast = forecast_demand_30days(med_id, df, features, xgb, xgb_bias)
-        risk     = classify_risk_3factor(days, quantity, forecast)
+
+        if med_id not in forecast_cache:
+            forecast_cache[med_id] = forecast_demand_30days(med_id, df, features, xgb, xgb_bias)
+        forecast = forecast_cache[med_id]
+
+        risk = classify_risk_3factor(days, quantity, forecast)
         risk_rows.append({
             "medicine_id":   med_id,
             "medicine_name": row["medicine_name"],
@@ -348,22 +358,20 @@ def show():
     st.plotly_chart(fig_line, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-"""
     # ==============================
     # BEST MODEL SUMMARY
     # ==============================
 
-    st.markdown('<div class="chart-card"><div class="chart-title">🏆 Best Forecasting Model</div>', unsafe_allow_html=True)
-
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        st.success(f"**{best_row['Model']}**")
-        st.caption(f"MAE: {best_row['MAE']} — lowest error among all models")
-    with col2:
-        st.dataframe(
-            comparison.style.highlight_min(subset=["MAE", "RMSE"], color="#d4edda")
-                            .highlight_max(subset=["R2"],           color="#d4edda"),
-            use_container_width=True
-        )
-    st.markdown('</div>', unsafe_allow_html=True)
-"""
+    # st.markdown('<div class="chart-card"><div class="chart-title">🏆 Best Forecasting Model</div>', unsafe_allow_html=True)
+    #
+    # col1, col2 = st.columns([1, 2])
+    # with col1:
+    #     st.success(f"**{best_row['Model']}**")
+    #     st.caption(f"MAE: {best_row['MAE']} — lowest error among all models")
+    # with col2:
+    #     st.dataframe(
+    #         comparison.style.highlight_min(subset=["MAE", "RMSE"], color="#d4edda")
+    #                         .highlight_max(subset=["R2"],           color="#d4edda"),
+    #         use_container_width=True
+    #     )
+    # st.markdown('</div>', unsafe_allow_html=True)
