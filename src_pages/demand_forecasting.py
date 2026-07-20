@@ -130,12 +130,13 @@ def get_weekly_sales(sales, medicine):
     return result
 
 
-def get_forecast(med_df, features, xgb_model, xgb_bias):
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_forecast(med_df, features, _xgb_model, xgb_bias):
     med_df     = med_df.sort_values("date").copy()
     split_date = med_df["date"].iloc[int(len(med_df) * 0.8)]
     test_df    = med_df[med_df["date"] >= split_date]
     X_test     = test_df[features]
-    y_pred_raw = np.clip(xgb_model.predict(X_test) + xgb_bias, 0, None)
+    y_pred_raw = np.clip(_xgb_model.predict(X_test) + xgb_bias, 0, None)
 
     pred_df         = test_df[["date"]].copy()
     pred_df["pred"] = y_pred_raw
@@ -204,7 +205,7 @@ def get_forecast(med_df, features, xgb_model, xgb_bias):
             "is_monsoon_season": is_monsoon_season,
         }
 
-        pred_qty = int(max(0, round(float(xgb_model.predict(pd.DataFrame([row])[features])[0]) + xgb_bias)))
+        pred_qty = int(max(0, round(float(_xgb_model.predict(pd.DataFrame([row])[features])[0]) + xgb_bias)))
         forecast_days.append({"date": future_date, "pred": pred_qty})
         recent_sales.append(pred_qty)
 
@@ -578,10 +579,8 @@ def show():
         st.markdown('</div>', unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
-"""
         # Model comparison
-        st.markdown('<div class="chart-card"><div class="chart-title">Model Comparison</div>', unsafe_allow_html=True)
-        st.table(comparison.set_index("Model"))
-        st.caption("✅ XGBoost selected as the final model based on combined ranking across MAE, RMSE and R².")
-        st.markdown('</div>', unsafe_allow_html=True)
-"""
+        # st.markdown('<div class="chart-card"><div class="chart-title">Model Comparison</div>', unsafe_allow_html=True)
+        # st.table(comparison.set_index("Model"))
+        # st.caption("✅ XGBoost selected as the final model based on combined ranking across MAE, RMSE and R².")
+        # st.markdown('</div>', unsafe_allow_html=True)
